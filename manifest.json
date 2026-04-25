@@ -1,0 +1,19 @@
+{
+  "name": "Sound Knot",
+  "short_name": "Sound Knot",
+  "description": "Language learning through active listening and recall",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#F4F3EE",
+  "theme_color": "#0B0C0E",
+  "orientation": "portrait",
+  "icons": [
+    {
+      "src": "icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ],
+  "categories": ["education", "productivity"]
+}

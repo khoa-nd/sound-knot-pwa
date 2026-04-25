@@ -1,0 +1,19 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <rect width="512" height="512" fill="#0B0C0E" rx="108"/>
+  <g transform="translate(256 256)" stroke="#F4F3EE" stroke-width="8" fill="none" stroke-linecap="round" stroke-linejoin="round">
+    <!-- Trefoil knot: x = sin(t) + 2·sin(2t), y = cos(t) - 2·cos(2t), scaled to ~160px -->
+    <path d="
+      M 0,-160
+      C 72,-138 140,-52 140,32
+      C 140,112 80,152 0,152
+      C -80,152 -140,112 -140,32
+      C -140,-52 -72,-138 0,-160 Z
+    " opacity="0"/>
+    <!-- Actual trefoil approximation with proper crossings -->
+    <path d="M 0,-140 C 60,-128 110,-80 130,-20 C 150,40 130,90 90,110 C 50,130 0,120 -30,100 C -80,70 -100,0 -80,-60 C -60,-120 -20,-140 0,-140"/>
+    <path d="M 0,-140 C -60,-128 -110,-80 -130,-20 C -150,40 -130,90 -90,110 C -50,130 0,120 30,100 C 80,70 100,0 80,-60 C 60,-120 20,-140 0,-140"/>
+    <circle cx="0" cy="0" r="8" fill="#F4F3EE" stroke="none"/>
+  </g>
+  <!-- Amber accent dot -->
+  <circle cx="256" cy="256" r="12" fill="oklch(0.72 0.18 55)"/>
+</svg>
