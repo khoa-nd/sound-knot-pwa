@@ -6,13 +6,227 @@
 const { useState: usePractice, useEffect: useEffectP, useRef: useRefP, useMemo: useMemoP } = React;
 
 // ═════════════════════════════════════════════════════════════
+// YouTube Player Component with IFrame API
+// ═════════════════════════════════════════════════════════════
+
+let ytApiReady = false;
+let ytApiCallbacks = [];
+
+function loadYouTubeAPI() {
+  if (window.YT && window.YT.Player) {
+    ytApiReady = true;
+    return Promise.resolve();
+  }
+
+  return new Promise((resolve) => {
+    if (document.querySelector('script[src*="youtube.com/iframe_api"]')) {
+      ytApiCallbacks.push(resolve);
+      return;
+    }
+
+    const tag = document.createElement('script');
+    tag.src = 'https://www.youtube.com/iframe_api';
+    document.head.appendChild(tag);
+
+    window.onYouTubeIframeAPIReady = () => {
+      ytApiReady = true;
+      ytApiCallbacks.forEach(cb => cb());
+      ytApiCallbacks = [];
+      resolve();
+    };
+    ytApiCallbacks.push(resolve);
+  });
+}
+
+function YouTubePlayer({ videoId, onReady, onStateChange, transcriptHidden, onToggleTranscript }) {
+  const containerRef = useRefP(null);
+  const playerRef = useRefP(null);
+  const [isPlaying, setIsPlaying] = usePractice(false);
+  const [currentTime, setCurrentTime] = usePractice(0);
+  const [duration, setDuration] = usePractice(0);
+  const [isReady, setIsReady] = usePractice(false);
+
+  useEffectP(() => {
+    let mounted = true;
+
+    loadYouTubeAPI().then(() => {
+      if (!mounted || !containerRef.current) return;
+
+      playerRef.current = new window.YT.Player(containerRef.current, {
+        videoId: videoId,
+        playerVars: {
+          rel: 0,
+          modestbranding: 1,
+          playsinline: 1,
+          controls: 0,
+          disablekb: 1,
+          fs: 0,
+          iv_load_policy: 3,
+        },
+        events: {
+          onReady: (e) => {
+            if (!mounted) return;
+            setDuration(e.target.getDuration());
+            setIsReady(true);
+            if (onReady) onReady(e.target);
+          },
+          onStateChange: (e) => {
+            if (!mounted) return;
+            setIsPlaying(e.data === window.YT.PlayerState.PLAYING);
+            if (onStateChange) onStateChange(e.data);
+          },
+        },
+      });
+    });
+
+    return () => {
+      mounted = false;
+      if (playerRef.current && playerRef.current.destroy) {
+        playerRef.current.destroy();
+      }
+    };
+  }, [videoId]);
+
+  // Update current time
+  useEffectP(() => {
+    if (!isReady) return;
+    const interval = setInterval(() => {
+      if (playerRef.current && playerRef.current.getCurrentTime) {
+        setCurrentTime(playerRef.current.getCurrentTime());
+      }
+    }, 500);
+    return () => clearInterval(interval);
+  }, [isReady]);
+
+  const togglePlay = () => {
+    if (!playerRef.current) return;
+    if (isPlaying) {
+      playerRef.current.pauseVideo();
+    } else {
+      playerRef.current.playVideo();
+    }
+  };
+
+  const seek = (seconds) => {
+    if (!playerRef.current) return;
+    playerRef.current.seekTo(playerRef.current.getCurrentTime() + seconds, true);
+  };
+
+  const formatTime = (s) => {
+    const m = Math.floor(s / 60);
+    const sec = Math.floor(s % 60);
+    return `${m}:${sec.toString().padStart(2, '0')}`;
+  };
+
+  return (
+    <div>
+      {/* YouTube iframe container with touch blocker */}
+      <div style={{
+        aspectRatio: '16 / 9',
+        borderRadius: 10,
+        overflow: 'hidden',
+        background: '#000',
+        border: '1px solid var(--gk-hair)',
+        position: 'relative',
+      }}>
+        <div ref={containerRef} style={{ width: '100%', height: '100%' }} />
+        {/* Invisible overlay to block touches on video */}
+        <div style={{
+          position: 'absolute',
+          inset: 0,
+          zIndex: 10,
+        }} />
+      </div>
+
+      {/* Controls below video */}
+      <div style={{
+        marginTop: 12,
+        padding: '10px 0',
+        display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 12,
+      }}>
+        {/* Time (left) */}
+        <span style={{
+          fontFamily: 'var(--gk-mono)',
+          fontSize: 11, letterSpacing: '0.03em',
+          color: 'var(--gk-ink-3)',
+          minWidth: 40,
+        }}>
+          {formatTime(currentTime)}
+        </span>
+
+        {/* Rewind 5s */}
+        <button onClick={() => seek(-5)} style={{
+          background: 'var(--gk-ink)', border: 'none', color: 'var(--gk-paper)',
+          width: 38, height: 38, borderRadius: 19,
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          cursor: 'pointer',
+        }}>
+          <IconBack size={16} />
+        </button>
+
+        {/* Play/Pause */}
+        <button onClick={togglePlay} style={{
+          background: 'var(--gk-ink)', border: 'none', color: 'var(--gk-paper)',
+          width: 48, height: 48, borderRadius: 24,
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          cursor: 'pointer',
+        }}>
+          {isPlaying ? <IconPause size={22} /> : <IconPlay size={22} />}
+        </button>
+
+        {/* Forward 5s */}
+        <button onClick={() => seek(5)} style={{
+          background: 'var(--gk-ink)', border: 'none', color: 'var(--gk-paper)',
+          width: 38, height: 38, borderRadius: 19,
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          cursor: 'pointer',
+          transform: 'scaleX(-1)',
+        }}>
+          <IconBack size={16} />
+        </button>
+
+        {/* Duration */}
+        <span style={{
+          fontFamily: 'var(--gk-mono)',
+          fontSize: 11, letterSpacing: '0.03em',
+          color: 'var(--gk-ink-3)',
+          minWidth: 40,
+          textAlign: 'right',
+        }}>
+          {formatTime(duration)}
+        </span>
+
+        {/* CC button */}
+        {onToggleTranscript && (
+          <button onClick={onToggleTranscript} style={{
+            background: transcriptHidden ? 'var(--gk-paper-2)' : 'var(--gk-ink)',
+            border: '1px solid var(--gk-hair)',
+            color: transcriptHidden ? 'var(--gk-ink-3)' : 'var(--gk-paper)',
+            width: 38, height: 38, borderRadius: 19,
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            cursor: 'pointer',
+            marginLeft: 4,
+          }}>
+            <IconCC size={18} />
+          </button>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ═════════════════════════════════════════════════════════════
 // 2. LISTEN SCREEN — YouTube + transcript
 // ═════════════════════════════════════════════════════════════
 
 function ListenScreen({ onBack, onRecall, platform = 'ios', visible = true,
-  videoId = 'dQw4w9WgcQ', recallCount = 0, transcriptHidden, setTranscriptHidden }) {
+  videoId = 'dQw4w9WgcQ', recallCount = 0, transcriptHidden, setTranscriptHidden,
+  transcript, transcriptLoading, transcriptError }) {
   const { SEGMENT, SAMPLE_VIDEO } = window.GK_DATA;
   const topPad = platform === 'ios' ? 54 : 40;
+
+  // Use fetched transcript or fall back to sample data
+  const lines = transcript || SEGMENT.lines;
 
   return (
     <div className="gk-app" style={{ display: visible ? 'flex' : 'none' }}>
@@ -31,23 +245,13 @@ function ListenScreen({ onBack, onRecall, platform = 'ios', visible = true,
         </span>
       </div>
 
-      {/* YT video */}
+      {/* YT video with custom controls */}
       <div style={{ padding: '14px 16px 0' }}>
-        <div style={{
-          aspectRatio: '16 / 9',
-          borderRadius: 10,
-          overflow: 'hidden',
-          background: '#000',
-          border: '1px solid var(--gk-hair)',
-        }}>
-          <iframe
-            src={`https://www.youtube.com/embed/${videoId}?rel=0&modestbranding=1&enablejsapi=1`}
-            style={{ width: '100%', height: '100%', border: 0, display: 'block' }}
-            allow="accelerometer; autoplay; encrypted-media; gyroscope; picture-in-picture"
-            allowFullScreen
-            title="Practice video"
-          />
-        </div>
+        <YouTubePlayer
+          videoId={videoId}
+          transcriptHidden={transcriptHidden}
+          onToggleTranscript={() => setTranscriptHidden(!transcriptHidden)}
+        />
         <div style={{
           display: 'flex', justifyContent: 'space-between', alignItems: 'baseline',
           marginTop: 10, color: 'var(--gk-ink-3)', fontSize: 12,
@@ -67,10 +271,11 @@ function ListenScreen({ onBack, onRecall, platform = 'ios', visible = true,
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 8 }}>
           <span className="gk-marker">Transcript</span>
           <span className="gk-mono" style={{ fontSize: 10, color: 'var(--gk-ink-4)', letterSpacing: '0.04em' }}>
-            {transcriptHidden ? 'HIDDEN' : `${SEGMENT.lines.length} LINES`}
+            {transcriptLoading ? 'LOADING...' : transcriptHidden ? 'HIDDEN' : `${lines.length} LINES`}
           </span>
         </div>
-        {transcriptHidden ? (
+
+        {transcriptLoading ? (
           <div style={{
             padding: 18,
             border: '1px dashed var(--gk-hair)',
@@ -78,11 +283,33 @@ function ListenScreen({ onBack, onRecall, platform = 'ios', visible = true,
             color: 'var(--gk-ink-3)', fontSize: 13,
             textAlign: 'center',
           }}>
-            Listen without reading. Tap the eye icon to reveal.
+            Fetching transcript...
+          </div>
+        ) : transcriptError ? (
+          <div style={{
+            padding: 18,
+            border: '1px dashed var(--gk-negative, #c53030)',
+            borderRadius: 10,
+            color: 'var(--gk-negative, #c53030)', fontSize: 13,
+            textAlign: 'center',
+          }}>
+            {transcriptError === 'Failed to fetch transcript'
+              ? 'No transcript available for this video'
+              : transcriptError}
+          </div>
+        ) : transcriptHidden ? (
+          <div style={{
+            padding: 18,
+            border: '1px dashed var(--gk-hair)',
+            borderRadius: 10,
+            color: 'var(--gk-ink-3)', fontSize: 13,
+            textAlign: 'center',
+          }}>
+            Listen without reading. Tap CC to reveal.
           </div>
         ) : (
           <div>
-            {SEGMENT.lines.map((line, i) => (
+            {lines.map((line, i) => (
               <div key={i} style={{
                 display: 'flex', gap: 12, padding: '8px 0',
                 borderTop: i === 0 ? 'none' : '1px solid var(--gk-hair-2)',
@@ -103,17 +330,15 @@ function ListenScreen({ onBack, onRecall, platform = 'ios', visible = true,
         )}
       </div>
 
-      {/* Bottom action — Recall (primary) + Show/Hide (secondary) */}
+      {/* Bottom action — Recall */}
       <div style={{
         borderTop: '1px solid var(--gk-hair)',
         padding: '12px 16px 16px',
         background: 'var(--gk-paper)',
         paddingBottom: platform === 'ios' ? 24 : 12,
-        display: 'grid',
-        gridTemplateColumns: '1fr 52px',
-        gap: 10, alignItems: 'center',
       }}>
         <button onClick={onRecall} style={{
+          width: '100%',
           height: 52,
           background: 'var(--gk-ink)', color: 'var(--gk-paper)',
           border: 'none', borderRadius: 26,
@@ -123,16 +348,6 @@ function ListenScreen({ onBack, onRecall, platform = 'ios', visible = true,
         }}>
           Recall
           <IconArrowRight size={14} />
-        </button>
-        <button onClick={() => setTranscriptHidden(!transcriptHidden)} style={{
-          height: 52, borderRadius: 26,
-          background: 'transparent',
-          border: '1px solid var(--gk-hair)',
-          color: 'var(--gk-ink)',
-          display: 'flex', alignItems: 'center', justifyContent: 'center',
-          cursor: 'pointer',
-        }}>
-          {transcriptHidden ? <IconEyeOff size={18} /> : <IconEye size={18} />}
         </button>
       </div>
     </div>

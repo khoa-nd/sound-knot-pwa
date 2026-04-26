@@ -30,6 +30,10 @@ const INSTALL_DISMISS_KEY = 'gk-install-dismissed';
 
 function shouldShowIOSInstall() {
   if (typeof window === 'undefined') return false;
+  // Always show in development (localhost)
+  const isDev = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
+  if (isDev) return true;
+
   const ua = navigator.userAgent;
   const isIOS = /iPad|iPhone|iPod/.test(ua) ||
     (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
@@ -46,6 +50,10 @@ function shouldShowIOSInstall() {
 }
 
 function InstallBanner({ onDismiss }) {
+  const showHelp = () => {
+    alert('To install Sound Knot:\n\n1. Tap the Share button (square with arrow) in Safari\'s toolbar\n2. Scroll down and tap "Add to Home Screen"\n3. Tap "Add" to confirm');
+  };
+
   return (
     <div style={{
       position: 'fixed',
@@ -58,15 +66,16 @@ function InstallBanner({ onDismiss }) {
       boxShadow: '0 8px 24px rgba(0,0,0,0.22)',
       zIndex: 9999,
     }}>
-      <div style={{
-        width: 36, height: 36, borderRadius: 9,
+      <button onClick={showHelp} style={{
         background: 'rgba(244,243,238,0.10)',
+        border: 'none',
+        width: 44, height: 44, borderRadius: 10,
         display: 'flex', alignItems: 'center', justifyContent: 'center',
-        flexShrink: 0,
+        flexShrink: 0, cursor: 'pointer', color: 'var(--gk-paper)',
       }}>
-        <IconShare size={18} />
-      </div>
-      <div style={{ flex: 1, minWidth: 0 }}>
+        <IconShare size={20} />
+      </button>
+      <div onClick={showHelp} style={{ flex: 1, minWidth: 0, cursor: 'pointer' }}>
         <div className="gk-marker" style={{ color: 'rgba(244,243,238,0.6)', marginBottom: 2 }}>
           Install
         </div>
@@ -100,8 +109,35 @@ function SoundKnotApp() {
   const [results, setResults] = useAppState([]);
   const [transcriptHidden, setTranscriptHidden] = useAppState(false);
   const [showInstall, setShowInstall] = useAppState(false);
+  const [transcript, setTranscript] = useAppState(null);
+  const [transcriptLoading, setTranscriptLoading] = useAppState(false);
+  const [transcriptError, setTranscriptError] = useAppState(null);
 
   useAppEffect(() => { setShowInstall(shouldShowIOSInstall()); }, []);
+
+  // Fetch transcript when videoId changes
+  useAppEffect(() => {
+    if (!videoId || videoId === 'dQw4w9WgcQ') return;
+
+    setTranscriptLoading(true);
+    setTranscriptError(null);
+    setTranscript(null);
+
+    fetch(`/api/transcript?videoId=${videoId}`)
+      .then(res => {
+        if (!res.ok) throw new Error('Failed to fetch transcript');
+        return res.json();
+      })
+      .then(data => {
+        setTranscript(data.lines);
+        setTranscriptLoading(false);
+      })
+      .catch(err => {
+        console.error('Transcript error:', err);
+        setTranscriptError(err.message);
+        setTranscriptLoading(false);
+      });
+  }, [videoId]);
 
   const dismissInstall = () => {
     try { localStorage.setItem(INSTALL_DISMISS_KEY, '1'); } catch (e) {}
@@ -113,7 +149,8 @@ function SoundKnotApp() {
   };
 
   const checkAll = () => {
-    const lines = (window.GK_DATA?.SEGMENT?.lines || []).map(l => l.text);
+    // Use fetched transcript if available, otherwise fall back to sample data
+    const lines = (transcript || window.GK_DATA?.SEGMENT?.lines || []).map(l => l.text);
     const out = recalls.map(r => {
       let best = null;
       for (const line of lines) {
@@ -163,6 +200,9 @@ function SoundKnotApp() {
             recallCount={recalls.length}
             transcriptHidden={transcriptHidden}
             setTranscriptHidden={setTranscriptHidden}
+            transcript={transcript}
+            transcriptLoading={transcriptLoading}
+            transcriptError={transcriptError}
             onBack={() => go('home')}
             onRecall={() => setScreen('dictation')}
           />

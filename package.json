@@ -1,0 +1,12 @@
+{
+  "name": "sound-knot-pwa",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "dev": "npx serve .",
+    "build": "echo 'Static site - no build needed'"
+  },
+  "dependencies": {
+    "youtube-transcript": "^1.3.0"
+  }
+}

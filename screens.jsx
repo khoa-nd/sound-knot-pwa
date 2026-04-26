@@ -83,12 +83,61 @@ function BottomNav({ active, onChange, platform }) {
 function HomeScreen({ onPaste, onOpenItem, onProgress, platform }) {
   const { RECENT_ITEMS } = window.GK_DATA;
   const [urlValue, setUrlValue] = useState('');
+  const [error, setError] = useState('');
+  const [checking, setChecking] = useState(false);
+  const inputRef = useRef(null);
   const active = RECENT_ITEMS[0];
   const rest = RECENT_ITEMS.slice(1);
 
-  const submitUrl = () => {
-    if (urlValue.trim()) onPaste(urlValue.trim());
-    else onPaste('https://youtube.com/watch?v=sample');
+  // Auto-focus input on mount
+  useEffect(() => {
+    if (inputRef.current) inputRef.current.focus();
+  }, []);
+
+  // Extract YouTube video ID
+  const getYouTubeId = (url) => {
+    const m = url.match(/(?:youtu\.be\/|v=|embed\/|shorts\/)([a-zA-Z0-9_-]{11})/);
+    return m ? m[1] : null;
+  };
+
+  // Check if video is embeddable
+  const checkEmbeddable = async (videoId) => {
+    return new Promise((resolve) => {
+      const img = new Image();
+      img.onload = () => resolve(img.width > 120); // Blocked thumbnails are 120x90
+      img.onerror = () => resolve(false);
+      img.src = `https://img.youtube.com/vi/${videoId}/mqdefault.jpg`;
+      setTimeout(() => resolve(true), 2000); // Timeout fallback
+    });
+  };
+
+  const submitUrl = async () => {
+    setError('');
+    const url = urlValue.trim();
+
+    if (!url) {
+      onPaste('https://youtube.com/watch?v=sample');
+      return;
+    }
+
+    // Validate YouTube URL
+    const videoId = getYouTubeId(url);
+    if (!videoId) {
+      setError('Please enter a valid YouTube URL');
+      return;
+    }
+
+    // Check embeddability
+    setChecking(true);
+    const embeddable = await checkEmbeddable(videoId);
+    setChecking(false);
+
+    if (!embeddable) {
+      setError('This video cannot be embedded. Try another video.');
+      return;
+    }
+
+    onPaste(url);
   };
 
   return (
@@ -111,33 +160,44 @@ function HomeScreen({ onPaste, onOpenItem, onProgress, platform }) {
           }}>
             <span style={{ fontWeight: 700 }}>Sound</span> in<br/>
             Solve the <span style={{ fontWeight: 700 }}>knot</span><br/>
-            <span style={{ fontStyle: 'italic', color: 'var(--gk-ink-3)' }}>Set out your memory.</span>
+            <span>Set out your memory.</span>
           </div>
 
+          {error && (
+            <div style={{
+              color: 'var(--gk-negative, #c53030)',
+              fontSize: 12,
+              marginBottom: 8,
+              fontWeight: 500,
+            }}>
+              {error}
+            </div>
+          )}
           <div style={{ position: 'relative' }}>
             <input
+              ref={inputRef}
               className="gk-input"
               placeholder="Paste a YouTube URL…"
               value={urlValue}
-              onChange={e => setUrlValue(e.target.value)}
+              onChange={e => { setUrlValue(e.target.value); setError(''); }}
               onKeyDown={e => e.key === 'Enter' && submitUrl()}
-              style={{ paddingRight: 52 }}
+              style={{
+                paddingRight: 52,
+                borderColor: error ? 'var(--gk-negative, #c53030)' : undefined,
+              }}
             />
-            <button onClick={submitUrl} style={{
+            <button onClick={submitUrl} disabled={checking} style={{
               position: 'absolute', right: 6, top: 6, bottom: 6, width: 40,
               borderRadius: 7,
-              background: urlValue ? 'var(--gk-ink)' : 'var(--gk-ink-4)',
+              background: checking ? 'var(--gk-ink-4)' : urlValue ? 'var(--gk-ink)' : 'var(--gk-ink-4)',
               color: 'var(--gk-paper)',
-              border: 'none', cursor: 'pointer',
+              border: 'none', cursor: checking ? 'wait' : 'pointer',
               display: 'flex', alignItems: 'center', justifyContent: 'center',
               transition: 'background 0.15s ease',
+              opacity: checking ? 0.6 : 1,
             }}>
               <IconArrowRight size={16} />
             </button>
-          </div>
-          <div style={{ marginTop: 8, display: 'flex', gap: 6 }}>
-            <span className="gk-chip"><IconYT size={10} /> Paste link</span>
-            <span className="gk-chip">or use clipboard</span>
           </div>
         </div>
 

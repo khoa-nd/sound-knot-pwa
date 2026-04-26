@@ -73,10 +73,16 @@ const IconYT = ({ size = 20 }) => (
 const IconShare = ({ size = 20 }) => (
   <Icon size={size}><path d="M12 3v12M8 7l4-4 4 4M5 12v7a2 2 0 002 2h10a2 2 0 002-2v-7"/></Icon>
 );
+const IconCC = ({ size = 20 }) => (
+  <Icon size={size}>
+    <rect x="2" y="4" width="20" height="16" rx="2" fill="none" stroke="currentColor" strokeWidth="2"/>
+    <text x="12" y="15" textAnchor="middle" fontSize="9" fontWeight="600" fill="currentColor" style={{ fontFamily: 'system-ui' }}>CC</text>
+  </Icon>
+);
 
 Object.assign(window, {
   IconPlay, IconPause, IconBack, IconClose, IconClip, IconRepeat,
   IconEye, IconEyeOff, IconMic, IconHome, IconChart, IconLibrary,
   IconPlus, IconArrowRight, IconCheck, IconFlame, IconRewind, IconForward,
-  IconLink, IconYT, IconShare,
+  IconLink, IconYT, IconShare, IconCC,
 });
