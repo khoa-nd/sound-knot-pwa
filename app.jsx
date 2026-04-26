@@ -34,7 +34,10 @@ function shouldShowIOSInstall() {
   const isIOS = /iPad|iPhone|iPod/.test(ua) ||
     (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
   // Other iOS browsers can't install PWAs — only Safari can.
-  const isSafari = /Safari/.test(ua) && !/CriOS|FxiOS|EdgiOS|OPiOS/.test(ua);
+  // Check for non-Safari browsers first (Chrome, Firefox, Edge, Opera on iOS)
+  const isNotSafari = /CriOS|FxiOS|EdgiOS|OPiOS|GSA/.test(ua);
+  // On iOS, if it's not one of those browsers, it's Safari (or Safari WebView)
+  const isSafari = isIOS && !isNotSafari;
   const isStandalone = window.navigator.standalone === true ||
     window.matchMedia('(display-mode: standalone)').matches;
   let dismissed = false;
@@ -45,15 +48,15 @@ function shouldShowIOSInstall() {
 function InstallBanner({ onDismiss }) {
   return (
     <div style={{
-      position: 'absolute',
-      left: 16, right: 16, bottom: 16,
+      position: 'fixed',
+      left: 16, right: 16, bottom: 24,
       background: 'var(--gk-ink)',
       color: 'var(--gk-paper)',
       borderRadius: 12,
-      padding: '12px 14px',
+      padding: '14px 16px',
       display: 'flex', alignItems: 'center', gap: 12,
-      boxShadow: '0 8px 24px rgba(0,0,0,0.18)',
-      zIndex: 50,
+      boxShadow: '0 8px 24px rgba(0,0,0,0.22)',
+      zIndex: 9999,
     }}>
       <div style={{
         width: 36, height: 36, borderRadius: 9,

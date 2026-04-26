@@ -96,7 +96,7 @@ function HomeScreen({ onPaste, onOpenItem, onProgress, platform }) {
       <div className="gk-scroll" style={{ flex: 1 }}>
         <TopSpacer platform={platform} />
         <div style={{ padding: '0 20px 6px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-          <span className="gk-marker" style={{ fontSize: 14, fontWeight: 700, color: 'var(--gk-ink)' }}>Sound Knot · Wed Apr 23</span>
+          <span className="gk-marker" style={{ fontSize: 14, fontWeight: 700, color: 'var(--gk-ink)' }}>Sound Knot</span>
           <span className="gk-chip">
             <IconFlame size={10} />
             12 day streak
@@ -106,7 +106,6 @@ function HomeScreen({ onPaste, onOpenItem, onProgress, platform }) {
         {/* Paste URL — the doorway */}
         <div style={{ padding: '12px 20px 24px' }}>
           <div style={{
-            fontFamily: 'var(--gk-serif)',
             fontSize: 32, lineHeight: 1.15, letterSpacing: '-0.02em',
             marginBottom: 16,
           }}>
