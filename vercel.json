@@ -1,9 +1,5 @@
 {
-  "functions": {
-    "api/*.js": {
-      "runtime": "nodejs20.x"
-    }
-  },
+  "regions": ["sin1"],
   "headers": [
     {
       "source": "/api/(.*)",
