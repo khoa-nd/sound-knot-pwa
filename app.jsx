@@ -77,11 +77,12 @@ function InstallBanner({ onDismiss }) {
       </div>
       <button onClick={onDismiss} aria-label="Dismiss" style={{
         background: 'transparent', border: 'none',
-        color: 'var(--gk-paper)', opacity: 0.5,
-        padding: 6, cursor: 'pointer', flexShrink: 0,
+        color: 'var(--gk-paper)', opacity: 0.6,
+        padding: 12, margin: -6, cursor: 'pointer', flexShrink: 0,
         display: 'flex', alignItems: 'center', justifyContent: 'center',
+        minWidth: 44, minHeight: 44,
       }}>
-        <IconClose size={16} />
+        <IconClose size={18} />
       </button>
     </div>
   );
