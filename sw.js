@@ -1,4 +1,4 @@
-const CACHE = 'sound-knot-v1';
+const CACHE = 'sound-knot-v2';
 const LOCAL_ASSETS = [
   '/',
   '/index.html',
