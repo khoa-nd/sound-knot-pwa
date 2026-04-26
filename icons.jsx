@@ -70,10 +70,13 @@ const IconLink = ({ size = 20 }) => (
 const IconYT = ({ size = 20 }) => (
   <Icon size={size} stroke={0}><path d="M23 7s-.2-1.6-.9-2.3c-.8-.9-1.8-.9-2.2-1C16.7 3.4 12 3.4 12 3.4s-4.7 0-7.9.3c-.4.1-1.4.1-2.2 1C1.2 5.4 1 7 1 7S.8 8.9.8 10.8v1.4C.8 14.1 1 16 1 16s.2 1.6.9 2.3c.8.9 1.9.9 2.4 1 1.7.2 7.7.3 7.7.3s4.7 0 7.9-.3c.4-.1 1.4-.1 2.2-1 .7-.7.9-2.3.9-2.3s.2-1.9.2-3.8v-1.4C23.2 8.9 23 7 23 7zM9.8 14.3V8l6.2 3.2-6.2 3.1z" fill="currentColor"/></Icon>
 );
+const IconShare = ({ size = 20 }) => (
+  <Icon size={size}><path d="M12 3v12M8 7l4-4 4 4M5 12v7a2 2 0 002 2h10a2 2 0 002-2v-7"/></Icon>
+);
 
 Object.assign(window, {
   IconPlay, IconPause, IconBack, IconClose, IconClip, IconRepeat,
   IconEye, IconEyeOff, IconMic, IconHome, IconChart, IconLibrary,
   IconPlus, IconArrowRight, IconCheck, IconFlame, IconRewind, IconForward,
-  IconLink, IconYT,
+  IconLink, IconYT, IconShare,
 });

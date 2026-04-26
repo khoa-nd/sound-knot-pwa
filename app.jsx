@@ -23,6 +23,68 @@ function detectPlatform() {
 const platform = detectPlatform();
 
 // ═════════════════════════════════════════════════════════════
+// iOS install banner — detects iOS Safari & not standalone
+// ═════════════════════════════════════════════════════════════
+
+const INSTALL_DISMISS_KEY = 'gk-install-dismissed';
+
+function shouldShowIOSInstall() {
+  if (typeof window === 'undefined') return false;
+  const ua = navigator.userAgent;
+  const isIOS = /iPad|iPhone|iPod/.test(ua) ||
+    (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+  // Other iOS browsers can't install PWAs — only Safari can.
+  const isSafari = /Safari/.test(ua) && !/CriOS|FxiOS|EdgiOS|OPiOS/.test(ua);
+  const isStandalone = window.navigator.standalone === true ||
+    window.matchMedia('(display-mode: standalone)').matches;
+  let dismissed = false;
+  try { dismissed = localStorage.getItem(INSTALL_DISMISS_KEY) === '1'; } catch (e) {}
+  return isIOS && isSafari && !isStandalone && !dismissed;
+}
+
+function InstallBanner({ onDismiss }) {
+  return (
+    <div style={{
+      position: 'absolute',
+      left: 16, right: 16, bottom: 16,
+      background: 'var(--gk-ink)',
+      color: 'var(--gk-paper)',
+      borderRadius: 12,
+      padding: '12px 14px',
+      display: 'flex', alignItems: 'center', gap: 12,
+      boxShadow: '0 8px 24px rgba(0,0,0,0.18)',
+      zIndex: 50,
+    }}>
+      <div style={{
+        width: 36, height: 36, borderRadius: 9,
+        background: 'rgba(244,243,238,0.10)',
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+        flexShrink: 0,
+      }}>
+        <IconShare size={18} />
+      </div>
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <div className="gk-marker" style={{ color: 'rgba(244,243,238,0.6)', marginBottom: 2 }}>
+          Install
+        </div>
+        <div style={{ fontSize: 13, lineHeight: 1.35, letterSpacing: '-0.005em' }}>
+          Tap <span style={{ display: 'inline-flex', verticalAlign: '-3px', margin: '0 2px' }}><IconShare size={13} /></span>
+          {' '}then <span style={{ fontWeight: 500 }}>Add to Home Screen</span>
+        </div>
+      </div>
+      <button onClick={onDismiss} aria-label="Dismiss" style={{
+        background: 'transparent', border: 'none',
+        color: 'var(--gk-paper)', opacity: 0.5,
+        padding: 6, cursor: 'pointer', flexShrink: 0,
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+      }}>
+        <IconClose size={16} />
+      </button>
+    </div>
+  );
+}
+
+// ═════════════════════════════════════════════════════════════
 // Main app — state machine
 // ═════════════════════════════════════════════════════════════
 
@@ -33,6 +95,14 @@ function SoundKnotApp() {
   const [checked, setChecked] = useAppState(false);
   const [results, setResults] = useAppState([]);
   const [transcriptHidden, setTranscriptHidden] = useAppState(false);
+  const [showInstall, setShowInstall] = useAppState(false);
+
+  useAppEffect(() => { setShowInstall(shouldShowIOSInstall()); }, []);
+
+  const dismissInstall = () => {
+    try { localStorage.setItem(INSTALL_DISMISS_KEY, '1'); } catch (e) {}
+    setShowInstall(false);
+  };
 
   const addRecall = (r) => {
     setRecalls(prev => [...prev, { ...r, id: Date.now() + Math.random() }]);
@@ -113,6 +183,10 @@ function SoundKnotApp() {
           results={results}
           onDone={() => go('home')}
         />
+      )}
+
+      {screen === 'home' && showInstall && (
+        <InstallBanner onDismiss={dismissInstall} />
       )}
     </div>
   );
