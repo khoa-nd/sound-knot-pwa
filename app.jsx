@@ -9,13 +9,38 @@ const { useState: useAppState, useEffect: useAppEffect } = React;
 // ═══════════════════════════════════════════════════════════════════════════
 
 async function fetchTranscriptClient(videoId) {
+  console.log('[CLIENT] Starting client-side transcript fetch for:', videoId);
+
   // Fetch YouTube video page to extract caption tracks
   const videoPageUrl = `https://www.youtube.com/watch?v=${videoId}`;
 
-  // Use a CORS proxy for client-side fetch
-  const corsProxy = 'https://corsproxy.io/?';
-  const response = await fetch(corsProxy + encodeURIComponent(videoPageUrl));
-  const html = await response.text();
+  // Try multiple CORS proxies in case one fails
+  const corsProxies = [
+    'https://api.allorigins.win/raw?url=',
+    'https://corsproxy.io/?',
+  ];
+
+  let html = null;
+  let lastError = null;
+
+  for (const proxy of corsProxies) {
+    try {
+      console.log('[CLIENT] Trying proxy:', proxy);
+      const response = await fetch(proxy + encodeURIComponent(videoPageUrl));
+      if (response.ok) {
+        html = await response.text();
+        console.log('[CLIENT] Proxy success, got', html.length, 'bytes');
+        break;
+      }
+    } catch (e) {
+      console.log('[CLIENT] Proxy failed:', e.message);
+      lastError = e;
+    }
+  }
+
+  if (!html) {
+    throw lastError || new Error('All CORS proxies failed');
+  }
 
   // Extract captions JSON from the page
   const captionMatch = html.match(/"captions":\s*(\{.*?"playerCaptionsTracklistRenderer".*?\})\s*,\s*"videoDetails"/s);
@@ -41,10 +66,26 @@ async function fetchTranscriptClient(videoId) {
   const englishTrack = tracks.find(t => t.languageCode === 'en' || t.languageCode?.startsWith('en'));
   const track = englishTrack || tracks[0];
 
-  // Fetch the actual transcript XML
+  // Fetch the actual transcript XML (try proxies)
   const transcriptUrl = track.baseUrl;
-  const transcriptRes = await fetch(corsProxy + encodeURIComponent(transcriptUrl));
-  const transcriptXml = await transcriptRes.text();
+  console.log('[CLIENT] Fetching transcript XML:', transcriptUrl);
+
+  let transcriptXml = null;
+  for (const proxy of corsProxies) {
+    try {
+      const transcriptRes = await fetch(proxy + encodeURIComponent(transcriptUrl));
+      if (transcriptRes.ok) {
+        transcriptXml = await transcriptRes.text();
+        break;
+      }
+    } catch (e) {
+      console.log('[CLIENT] Transcript fetch failed with proxy:', proxy);
+    }
+  }
+
+  if (!transcriptXml) {
+    throw new Error('Failed to fetch transcript XML');
+  }
 
   // Parse XML transcript
   const parser = new DOMParser();
