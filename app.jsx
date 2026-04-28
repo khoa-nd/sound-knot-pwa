@@ -4,6 +4,112 @@
 
 const { useState: useAppState, useEffect: useAppEffect } = React;
 
+// ═══════════════════════════════════════════════════════════════════════════
+// Client-side YouTube transcript fetcher (fallback when server API is blocked)
+// ═══════════════════════════════════════════════════════════════════════════
+
+async function fetchTranscriptClient(videoId) {
+  // Fetch YouTube video page to extract caption tracks
+  const videoPageUrl = `https://www.youtube.com/watch?v=${videoId}`;
+
+  // Use a CORS proxy for client-side fetch
+  const corsProxy = 'https://corsproxy.io/?';
+  const response = await fetch(corsProxy + encodeURIComponent(videoPageUrl));
+  const html = await response.text();
+
+  // Extract captions JSON from the page
+  const captionMatch = html.match(/"captions":\s*(\{.*?"playerCaptionsTracklistRenderer".*?\})\s*,\s*"videoDetails"/s);
+  if (!captionMatch) {
+    throw new Error('No captions found');
+  }
+
+  let captionsData;
+  try {
+    // Extract just the captions object and parse
+    const captionsStr = captionMatch[1];
+    captionsData = JSON.parse(captionsStr);
+  } catch (e) {
+    throw new Error('Failed to parse captions data');
+  }
+
+  const tracks = captionsData?.playerCaptionsTracklistRenderer?.captionTracks;
+  if (!tracks || tracks.length === 0) {
+    throw new Error('No caption tracks available');
+  }
+
+  // Prefer English, fallback to first available
+  const englishTrack = tracks.find(t => t.languageCode === 'en' || t.languageCode?.startsWith('en'));
+  const track = englishTrack || tracks[0];
+
+  // Fetch the actual transcript XML
+  const transcriptUrl = track.baseUrl;
+  const transcriptRes = await fetch(corsProxy + encodeURIComponent(transcriptUrl));
+  const transcriptXml = await transcriptRes.text();
+
+  // Parse XML transcript
+  const parser = new DOMParser();
+  const doc = parser.parseFromString(transcriptXml, 'text/xml');
+  const textNodes = doc.querySelectorAll('text');
+
+  const rawLines = Array.from(textNodes).map(node => ({
+    offset: parseFloat(node.getAttribute('start')) * 1000,
+    duration: parseFloat(node.getAttribute('dur') || '2') * 1000,
+    text: node.textContent.replace(/&#39;/g, "'").replace(/&quot;/g, '"').replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>'),
+  }));
+
+  // Merge into sentences (same logic as server)
+  return mergeTranscriptLines(rawLines);
+}
+
+function mergeTranscriptLines(transcript) {
+  const merged = [];
+  let current = null;
+  const sentenceEnd = /[.!?][\s"'\)\]]*$/;
+
+  for (const item of transcript) {
+    const startSec = item.offset / 1000;
+    const durationSec = item.duration / 1000;
+    const text = item.text.trim();
+
+    if (!current) {
+      current = { start: startSec, endTime: startSec + durationSec, text };
+    } else {
+      current.text += ' ' + text;
+      current.endTime = startSec + durationSec;
+    }
+
+    const isSentenceEnd = sentenceEnd.test(text);
+    const segmentDuration = current.endTime - current.start;
+    const isLongEnough = segmentDuration >= 8;
+    const isTooLong = segmentDuration >= 15;
+
+    if (isSentenceEnd || isTooLong || (isLongEnough && text.endsWith(','))) {
+      const mins = Math.floor(current.start / 60);
+      const secs = Math.floor(current.start % 60);
+      merged.push({
+        t: `${mins}:${secs.toString().padStart(2, '0')}`,
+        start: current.start,
+        duration: current.endTime - current.start,
+        text: current.text.replace(/\s+/g, ' ').trim(),
+      });
+      current = null;
+    }
+  }
+
+  if (current) {
+    const mins = Math.floor(current.start / 60);
+    const secs = Math.floor(current.start % 60);
+    merged.push({
+      t: `${mins}:${secs.toString().padStart(2, '0')}`,
+      start: current.start,
+      duration: current.endTime - current.start,
+      text: current.text.replace(/\s+/g, ' ').trim(),
+    });
+  }
+
+  return merged;
+}
+
 function extractYouTubeId(url) {
   if (!url) return 'dQw4w9WgcQ';
   const m = url.match(/(?:youtu\.be\/|v=|embed\/|shorts\/)([a-zA-Z0-9_-]{11})/);
@@ -115,7 +221,7 @@ function SoundKnotApp() {
 
   useAppEffect(() => { setShowInstall(shouldShowIOSInstall()); }, []);
 
-  // Fetch transcript when videoId changes
+  // Fetch transcript when videoId changes (server first, client fallback)
   useAppEffect(() => {
     if (!videoId || videoId === 'dQw4w9WgcQ') return;
 
@@ -124,17 +230,24 @@ function SoundKnotApp() {
     setTranscript(null);
 
     const apiUrl = `/api/transcript?videoId=${videoId}`;
-    console.log('[DEBUG] Fetching transcript:', apiUrl);
+    console.log('[DEBUG] Fetching transcript from server:', apiUrl);
 
     fetch(apiUrl)
-      .then(res => {
-        console.log('[DEBUG] Response status:', res.status, res.statusText);
-        if (!res.ok) throw new Error(`Failed to fetch transcript: ${res.status}`);
-        return res.json();
+      .then(async res => {
+        console.log('[DEBUG] Server response:', res.status);
+        if (res.ok) {
+          const data = await res.json();
+          console.log('[DEBUG] Server transcript:', data.lines?.length, 'lines');
+          return data.lines;
+        }
+        // Server blocked (403) or error - try client-side fallback
+        console.log('[DEBUG] Server blocked, trying client-side fallback...');
+        const lines = await fetchTranscriptClient(videoId);
+        console.log('[DEBUG] Client transcript:', lines.length, 'lines');
+        return lines;
       })
-      .then(data => {
-        console.log('[DEBUG] Transcript data:', data);
-        setTranscript(data.lines);
+      .then(lines => {
+        setTranscript(lines);
         setTranscriptLoading(false);
       })
       .catch(err => {
