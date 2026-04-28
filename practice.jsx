@@ -38,7 +38,7 @@ function loadYouTubeAPI() {
   });
 }
 
-function YouTubePlayer({ videoId, onReady, onStateChange, transcriptHidden, onToggleTranscript }) {
+function YouTubePlayer({ videoId, onReady, onStateChange, onTimeUpdate, transcriptHidden, onToggleTranscript }) {
   const containerRef = useRefP(null);
   const playerRef = useRefP(null);
   const [isPlaying, setIsPlaying] = usePractice(false);
@@ -87,16 +87,18 @@ function YouTubePlayer({ videoId, onReady, onStateChange, transcriptHidden, onTo
     };
   }, [videoId]);
 
-  // Update current time
+  // Update current time and notify parent
   useEffectP(() => {
     if (!isReady) return;
     const interval = setInterval(() => {
       if (playerRef.current && playerRef.current.getCurrentTime) {
-        setCurrentTime(playerRef.current.getCurrentTime());
+        const time = playerRef.current.getCurrentTime();
+        setCurrentTime(time);
+        if (onTimeUpdate) onTimeUpdate(time);
       }
-    }, 500);
+    }, 250); // More frequent updates for smoother highlighting
     return () => clearInterval(interval);
-  }, [isReady]);
+  }, [isReady, onTimeUpdate]);
 
   const togglePlay = () => {
     if (!playerRef.current) return;
@@ -224,9 +226,25 @@ function ListenScreen({ onBack, onRecall, platform = 'ios', visible = true,
   transcript, transcriptLoading, transcriptError }) {
   const { SEGMENT, SAMPLE_VIDEO } = window.GK_DATA;
   const topPad = platform === 'ios' ? 54 : 40;
+  const [currentTime, setCurrentTime] = usePractice(0);
+  const activeLineRef = useRefP(null);
 
   // Use fetched transcript or fall back to sample data
   const lines = transcript || SEGMENT.lines;
+
+  // Find active line index based on current playback time
+  const activeLineIndex = lines.findIndex((line, i) => {
+    const nextLine = lines[i + 1];
+    const lineEnd = nextLine ? nextLine.start : line.start + line.duration;
+    return currentTime >= line.start && currentTime < lineEnd;
+  });
+
+  // Auto-scroll to active line
+  useEffectP(() => {
+    if (activeLineRef.current && activeLineIndex >= 0) {
+      activeLineRef.current.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }
+  }, [activeLineIndex]);
 
   return (
     <div className="gk-app" style={{ display: visible ? 'flex' : 'none' }}>
@@ -251,6 +269,7 @@ function ListenScreen({ onBack, onRecall, platform = 'ios', visible = true,
           videoId={videoId}
           transcriptHidden={transcriptHidden}
           onToggleTranscript={() => setTranscriptHidden(!transcriptHidden)}
+          onTimeUpdate={setCurrentTime}
         />
         <div style={{
           display: 'flex', justifyContent: 'space-between', alignItems: 'baseline',
@@ -309,23 +328,41 @@ function ListenScreen({ onBack, onRecall, platform = 'ios', visible = true,
           </div>
         ) : (
           <div>
-            {lines.map((line, i) => (
-              <div key={i} style={{
-                display: 'flex', gap: 12, padding: '8px 0',
-                borderTop: i === 0 ? 'none' : '1px solid var(--gk-hair-2)',
-              }}>
-                <div className="gk-mono" style={{
-                  color: 'var(--gk-ink-4)',
-                  fontSize: 10, letterSpacing: '0.04em',
-                  paddingTop: 6, minWidth: 38, flexShrink: 0,
-                }}>
-                  {line.t}
+            {lines.map((line, i) => {
+              const isActive = i === activeLineIndex;
+              return (
+                <div
+                  key={i}
+                  ref={isActive ? activeLineRef : null}
+                  style={{
+                    display: 'flex', gap: 12, padding: '8px 0',
+                    borderTop: i === 0 ? 'none' : '1px solid var(--gk-hair-2)',
+                    background: isActive ? 'var(--gk-accent-light, rgba(59, 130, 246, 0.08))' : 'transparent',
+                    marginLeft: -8, marginRight: -8, paddingLeft: 8, paddingRight: 8,
+                    borderRadius: 6,
+                    transition: 'background 0.2s ease',
+                  }}
+                >
+                  <div className="gk-mono" style={{
+                    color: isActive ? 'var(--gk-accent, #3b82f6)' : 'var(--gk-ink-4)',
+                    fontSize: 10, letterSpacing: '0.04em',
+                    paddingTop: 6, minWidth: 38, flexShrink: 0,
+                    fontWeight: isActive ? 600 : 400,
+                    transition: 'color 0.2s ease',
+                  }}>
+                    {line.t}
+                  </div>
+                  <div style={{
+                    fontSize: 16, lineHeight: 1.55, letterSpacing: '-0.005em',
+                    color: isActive ? 'var(--gk-ink)' : 'var(--gk-ink-2)',
+                    fontWeight: isActive ? 500 : 400,
+                    transition: 'color 0.2s ease, font-weight 0.2s ease',
+                  }}>
+                    {line.text}
+                  </div>
                 </div>
-                <div style={{ fontSize: 16, lineHeight: 1.55, color: 'var(--gk-ink-2)', letterSpacing: '-0.005em' }}>
-                  {line.text}
-                </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         )}
       </div>

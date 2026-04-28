@@ -123,17 +123,22 @@ function SoundKnotApp() {
     setTranscriptError(null);
     setTranscript(null);
 
-    fetch(`/api/transcript?videoId=${videoId}`)
+    const apiUrl = `/api/transcript?videoId=${videoId}`;
+    console.log('[DEBUG] Fetching transcript:', apiUrl);
+
+    fetch(apiUrl)
       .then(res => {
-        if (!res.ok) throw new Error('Failed to fetch transcript');
+        console.log('[DEBUG] Response status:', res.status, res.statusText);
+        if (!res.ok) throw new Error(`Failed to fetch transcript: ${res.status}`);
         return res.json();
       })
       .then(data => {
+        console.log('[DEBUG] Transcript data:', data);
         setTranscript(data.lines);
         setTranscriptLoading(false);
       })
       .catch(err => {
-        console.error('Transcript error:', err);
+        console.error('[DEBUG] Transcript error:', err);
         setTranscriptError(err.message);
         setTranscriptLoading(false);
       });

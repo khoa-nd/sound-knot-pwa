@@ -35,13 +35,8 @@ export default async function handler(req, res) {
       return res.status(404).json({ error: 'No transcript available for this video' });
     }
 
-    // Format transcript data
-    const lines = transcript.map(item => ({
-      t: formatTime(item.offset / 1000),
-      start: item.offset / 1000,
-      duration: item.duration / 1000,
-      text: item.text,
-    }));
+    // Merge fragments into complete sentences
+    const lines = mergeTranscriptLines(transcript);
 
     return res.status(200).json({
       videoId,
@@ -67,4 +62,61 @@ function formatTime(seconds) {
   const mins = Math.floor(seconds / 60);
   const secs = Math.floor(seconds % 60);
   return `${mins}:${secs.toString().padStart(2, '0')}`;
+}
+
+// Merge fragmented transcript lines into complete sentences
+function mergeTranscriptLines(transcript) {
+  const merged = [];
+  let current = null;
+
+  // Sentence-ending punctuation pattern
+  const sentenceEnd = /[.!?][\s"'\)\]]*$/;
+
+  for (const item of transcript) {
+    const startSec = item.offset / 1000;
+    const durationSec = item.duration / 1000;
+    const text = item.text.trim();
+
+    if (!current) {
+      // Start a new segment
+      current = {
+        start: startSec,
+        endTime: startSec + durationSec,
+        text: text,
+      };
+    } else {
+      // Append to current segment
+      current.text += ' ' + text;
+      current.endTime = startSec + durationSec;
+    }
+
+    // Check if this ends a sentence or segment is long enough
+    const isSentenceEnd = sentenceEnd.test(text);
+    const segmentDuration = current.endTime - current.start;
+    const isLongEnough = segmentDuration >= 8; // At least 8 seconds
+    const isTooLong = segmentDuration >= 15; // Max 15 seconds
+
+    if (isSentenceEnd || isTooLong || (isLongEnough && text.endsWith(','))) {
+      // Finalize this segment
+      merged.push({
+        t: formatTime(current.start),
+        start: current.start,
+        duration: current.endTime - current.start,
+        text: current.text.replace(/\s+/g, ' ').trim(),
+      });
+      current = null;
+    }
+  }
+
+  // Don't forget the last segment
+  if (current) {
+    merged.push({
+      t: formatTime(current.start),
+      start: current.start,
+      duration: current.endTime - current.start,
+      text: current.text.replace(/\s+/g, ' ').trim(),
+    });
+  }
+
+  return merged;
 }
