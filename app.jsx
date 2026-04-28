@@ -42,22 +42,44 @@ async function fetchTranscriptClient(videoId) {
     throw lastError || new Error('All CORS proxies failed');
   }
 
-  // Extract captions JSON from the page
-  const captionMatch = html.match(/"captions":\s*(\{.*?"playerCaptionsTracklistRenderer".*?\})\s*,\s*"videoDetails"/s);
-  if (!captionMatch) {
-    throw new Error('No captions found');
+  // Extract captions JSON from the page - try multiple patterns
+  let tracks = null;
+
+  // Pattern 1: Look for captionTracks in the page data
+  const trackMatch = html.match(/"captionTracks"\s*:\s*(\[.*?\])\s*,\s*"/s);
+  if (trackMatch) {
+    try {
+      tracks = JSON.parse(trackMatch[1]);
+      console.log('[CLIENT] Found tracks via pattern 1:', tracks.length);
+    } catch (e) {
+      console.log('[CLIENT] Pattern 1 parse failed');
+    }
   }
 
-  let captionsData;
-  try {
-    // Extract just the captions object and parse
-    const captionsStr = captionMatch[1];
-    captionsData = JSON.parse(captionsStr);
-  } catch (e) {
-    throw new Error('Failed to parse captions data');
+  // Pattern 2: Look for timedtext URL directly
+  if (!tracks) {
+    const timedtextMatch = html.match(/https:\/\/www\.youtube\.com\/api\/timedtext[^"\\]+/g);
+    if (timedtextMatch && timedtextMatch.length > 0) {
+      // Decode the URL and create a pseudo track
+      const url = timedtextMatch[0].replace(/\\u0026/g, '&');
+      tracks = [{ baseUrl: url, languageCode: 'en' }];
+      console.log('[CLIENT] Found tracks via pattern 2 (timedtext URL)');
+    }
   }
 
-  const tracks = captionsData?.playerCaptionsTracklistRenderer?.captionTracks;
+  // Pattern 3: Try ytInitialPlayerResponse
+  if (!tracks) {
+    const playerMatch = html.match(/ytInitialPlayerResponse\s*=\s*(\{.+?\});/s);
+    if (playerMatch) {
+      try {
+        const playerData = JSON.parse(playerMatch[1]);
+        tracks = playerData?.captions?.playerCaptionsTracklistRenderer?.captionTracks;
+        if (tracks) console.log('[CLIENT] Found tracks via pattern 3:', tracks.length);
+      } catch (e) {
+        console.log('[CLIENT] Pattern 3 parse failed');
+      }
+    }
+  }
   if (!tracks || tracks.length === 0) {
     throw new Error('No caption tracks available');
   }
