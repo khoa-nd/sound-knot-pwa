@@ -4,175 +4,6 @@
 
 const { useState: useAppState, useEffect: useAppEffect } = React;
 
-// ═══════════════════════════════════════════════════════════════════════════
-// Client-side YouTube transcript fetcher (fallback when server API is blocked)
-// ═══════════════════════════════════════════════════════════════════════════
-
-async function fetchTranscriptClient(videoId) {
-  console.log('[CLIENT] Starting client-side transcript fetch for:', videoId);
-
-  // Fetch YouTube video page to extract caption tracks
-  const videoPageUrl = `https://www.youtube.com/watch?v=${videoId}`;
-
-  // Try multiple CORS proxies in case one fails
-  const corsProxies = [
-    'https://api.allorigins.win/raw?url=',
-    'https://corsproxy.io/?',
-  ];
-
-  let html = null;
-  let lastError = null;
-
-  for (const proxy of corsProxies) {
-    try {
-      console.log('[CLIENT] Trying proxy:', proxy);
-      const response = await fetch(proxy + encodeURIComponent(videoPageUrl));
-      if (response.ok) {
-        html = await response.text();
-        console.log('[CLIENT] Proxy success, got', html.length, 'bytes');
-        break;
-      }
-    } catch (e) {
-      console.log('[CLIENT] Proxy failed:', e.message);
-      lastError = e;
-    }
-  }
-
-  if (!html) {
-    throw lastError || new Error('All CORS proxies failed');
-  }
-
-  // Extract captions JSON from the page - try multiple patterns
-  let tracks = null;
-
-  // Pattern 1: Look for captionTracks in the page data
-  const trackMatch = html.match(/"captionTracks"\s*:\s*(\[.*?\])\s*,\s*"/s);
-  if (trackMatch) {
-    try {
-      tracks = JSON.parse(trackMatch[1]);
-      console.log('[CLIENT] Found tracks via pattern 1:', tracks.length);
-    } catch (e) {
-      console.log('[CLIENT] Pattern 1 parse failed');
-    }
-  }
-
-  // Pattern 2: Look for timedtext URL directly
-  if (!tracks) {
-    const timedtextMatch = html.match(/https:\/\/www\.youtube\.com\/api\/timedtext[^"\\]+/g);
-    if (timedtextMatch && timedtextMatch.length > 0) {
-      // Decode the URL and create a pseudo track
-      const url = timedtextMatch[0].replace(/\\u0026/g, '&');
-      tracks = [{ baseUrl: url, languageCode: 'en' }];
-      console.log('[CLIENT] Found tracks via pattern 2 (timedtext URL)');
-    }
-  }
-
-  // Pattern 3: Try ytInitialPlayerResponse
-  if (!tracks) {
-    const playerMatch = html.match(/ytInitialPlayerResponse\s*=\s*(\{.+?\});/s);
-    if (playerMatch) {
-      try {
-        const playerData = JSON.parse(playerMatch[1]);
-        tracks = playerData?.captions?.playerCaptionsTracklistRenderer?.captionTracks;
-        if (tracks) console.log('[CLIENT] Found tracks via pattern 3:', tracks.length);
-      } catch (e) {
-        console.log('[CLIENT] Pattern 3 parse failed');
-      }
-    }
-  }
-  if (!tracks || tracks.length === 0) {
-    throw new Error('No caption tracks available');
-  }
-
-  // Prefer English, fallback to first available
-  const englishTrack = tracks.find(t => t.languageCode === 'en' || t.languageCode?.startsWith('en'));
-  const track = englishTrack || tracks[0];
-
-  // Fetch the actual transcript XML (try proxies)
-  const transcriptUrl = track.baseUrl;
-  console.log('[CLIENT] Fetching transcript XML:', transcriptUrl);
-
-  let transcriptXml = null;
-  for (const proxy of corsProxies) {
-    try {
-      const transcriptRes = await fetch(proxy + encodeURIComponent(transcriptUrl));
-      if (transcriptRes.ok) {
-        transcriptXml = await transcriptRes.text();
-        break;
-      }
-    } catch (e) {
-      console.log('[CLIENT] Transcript fetch failed with proxy:', proxy);
-    }
-  }
-
-  if (!transcriptXml) {
-    throw new Error('Failed to fetch transcript XML');
-  }
-
-  // Parse XML transcript
-  const parser = new DOMParser();
-  const doc = parser.parseFromString(transcriptXml, 'text/xml');
-  const textNodes = doc.querySelectorAll('text');
-
-  const rawLines = Array.from(textNodes).map(node => ({
-    offset: parseFloat(node.getAttribute('start')) * 1000,
-    duration: parseFloat(node.getAttribute('dur') || '2') * 1000,
-    text: node.textContent.replace(/&#39;/g, "'").replace(/&quot;/g, '"').replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>'),
-  }));
-
-  // Merge into sentences (same logic as server)
-  return mergeTranscriptLines(rawLines);
-}
-
-function mergeTranscriptLines(transcript) {
-  const merged = [];
-  let current = null;
-  const sentenceEnd = /[.!?][\s"'\)\]]*$/;
-
-  for (const item of transcript) {
-    const startSec = item.offset / 1000;
-    const durationSec = item.duration / 1000;
-    const text = item.text.trim();
-
-    if (!current) {
-      current = { start: startSec, endTime: startSec + durationSec, text };
-    } else {
-      current.text += ' ' + text;
-      current.endTime = startSec + durationSec;
-    }
-
-    const isSentenceEnd = sentenceEnd.test(text);
-    const segmentDuration = current.endTime - current.start;
-    const isLongEnough = segmentDuration >= 8;
-    const isTooLong = segmentDuration >= 15;
-
-    if (isSentenceEnd || isTooLong || (isLongEnough && text.endsWith(','))) {
-      const mins = Math.floor(current.start / 60);
-      const secs = Math.floor(current.start % 60);
-      merged.push({
-        t: `${mins}:${secs.toString().padStart(2, '0')}`,
-        start: current.start,
-        duration: current.endTime - current.start,
-        text: current.text.replace(/\s+/g, ' ').trim(),
-      });
-      current = null;
-    }
-  }
-
-  if (current) {
-    const mins = Math.floor(current.start / 60);
-    const secs = Math.floor(current.start % 60);
-    merged.push({
-      t: `${mins}:${secs.toString().padStart(2, '0')}`,
-      start: current.start,
-      duration: current.endTime - current.start,
-      text: current.text.replace(/\s+/g, ' ').trim(),
-    });
-  }
-
-  return merged;
-}
-
 function extractYouTubeId(url) {
   if (!url) return 'dQw4w9WgcQ';
   const m = url.match(/(?:youtu\.be\/|v=|embed\/|shorts\/)([a-zA-Z0-9_-]{11})/);
@@ -284,7 +115,7 @@ function SoundKnotApp() {
 
   useAppEffect(() => { setShowInstall(shouldShowIOSInstall()); }, []);
 
-  // Fetch transcript when videoId changes (server first, client fallback)
+  // Fetch transcript when videoId changes
   useAppEffect(() => {
     if (!videoId || videoId === 'dQw4w9WgcQ') return;
 
@@ -292,29 +123,17 @@ function SoundKnotApp() {
     setTranscriptError(null);
     setTranscript(null);
 
-    const apiUrl = `/api/transcript?videoId=${videoId}`;
-    console.log('[DEBUG] Fetching transcript from server:', apiUrl);
-
-    fetch(apiUrl)
-      .then(async res => {
-        console.log('[DEBUG] Server response:', res.status);
-        if (res.ok) {
-          const data = await res.json();
-          console.log('[DEBUG] Server transcript:', data.lines?.length, 'lines');
-          return data.lines;
-        }
-        // Server blocked (403) or error - try client-side fallback
-        console.log('[DEBUG] Server blocked, trying client-side fallback...');
-        const lines = await fetchTranscriptClient(videoId);
-        console.log('[DEBUG] Client transcript:', lines.length, 'lines');
-        return lines;
+    fetch(`/api/transcript?videoId=${videoId}`)
+      .then(res => {
+        if (!res.ok) throw new Error('Failed to fetch transcript');
+        return res.json();
       })
-      .then(lines => {
-        setTranscript(lines);
+      .then(data => {
+        setTranscript(data.lines);
         setTranscriptLoading(false);
       })
       .catch(err => {
-        console.error('[DEBUG] Transcript error:', err);
+        console.error('Transcript error:', err);
         setTranscriptError(err.message);
         setTranscriptLoading(false);
       });
