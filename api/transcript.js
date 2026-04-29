@@ -58,6 +58,8 @@ async function fetchTranscriptWithProxy(videoId) {
   let html;
 
   // Try Webshare proxy if API key is available
+  console.log('WEBSHARE_API_KEY present:', !!WEBSHARE_API_KEY);
+
   if (WEBSHARE_API_KEY) {
     try {
       // Get proxy credentials from Webshare
@@ -66,6 +68,7 @@ async function fetchTranscriptWithProxy(videoId) {
         { headers: { 'Authorization': `Token ${WEBSHARE_API_KEY}` } }
       );
       const proxyData = await proxyListRes.json();
+      console.log('Webshare API response:', JSON.stringify(proxyData).slice(0, 200));
 
       if (proxyData.results && proxyData.results.length > 0) {
         const proxy = proxyData.results[0];
